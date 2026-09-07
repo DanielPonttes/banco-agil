@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -20,13 +20,18 @@ class Settings:
 
     @classmethod
     def from_env(cls):
-        load_dotenv(ROOT / ".env")
-        data_dir = Path(os.getenv("DATA_DIR", "data/runtime"))
+        local_values = dotenv_values(ROOT / ".env")
+
+        def value(name, default=""):
+            configured = os.environ.get(name, local_values.get(name))
+            return default if configured is None else configured
+
+        data_dir = Path(value("DATA_DIR", "data/runtime"))
         return cls(
             data_dir=data_dir if data_dir.is_absolute() else ROOT / data_dir,
             examples_dir=ROOT / "data/examples",
-            gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip(),
-            gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip(),
-            awesomeapi_key=os.getenv("AWESOMEAPI_KEY", "").strip(),
-            log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
+            gemini_api_key=value("GEMINI_API_KEY", "").strip(),
+            gemini_model=value("GEMINI_MODEL", "gemini-3.8-flash").strip(),
+            awesomeapi_key=value("AWESOMEAPI_KEY", "").strip(),
+            log_level=value("LOG_LEVEL", "INFO").upper(),
         )
