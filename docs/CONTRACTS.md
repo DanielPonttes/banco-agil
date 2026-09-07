@@ -41,3 +41,11 @@ CPF fictício com zero inicial em pelo menos um caso.
 Cenário entrevista: score300 limite1000 pedido3000; renda5000 despesas2000 formal 0 dependentes sem dívidas => score575 e aprova nova solicitação.
 UTF-8, ISO UTC timestamps, precisão monetária 2 casas. Diário auxiliar JSON ignorado via data/runtime/.
 
+
+## Fórmula exata e obrigatória
+
+score_bruto = renda_mensal / (despesas_mensais + 1) * 30 + peso_emprego + peso_dependentes + peso_dividas.
+Emprego: formal=300, autonomo=200, desempregado=0.
+Dependentes: 0=100, 1=80, 2=60, >=3=30.
+Dividas: True=-100, False=100.
+Arredondar HALF_UP, limitar 0..1000. Não adaptar a fórmula para coincidir apenas com o exemplo575.

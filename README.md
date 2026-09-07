@@ -138,7 +138,12 @@ Cobertura funcional: autenticação, fronteiras de score, aprovação/rejeição
 
 ## Roteiro de demonstração
 
-Usar os clientes fictícios disponíveis em `data/examples/clientes.csv` e na ajuda da interface.
+Usar os clientes fictícios disponíveis na ajuda da interface:
+
+| Cliente | CPF fictício | Nascimento | Limite inicial | Score inicial |
+|---|---|---|---|---|
+| Ana Souza | `01234567890` | `15/01/1990` | R$ 1.000 | 300 |
+| Bruno Lima | `98765432100` | `22/07/1985` | R$ 3.000 | 575 |
 
 1. Autenticar e perguntar “Qual é meu limite?”.
 2. Pedir um limite dentro da faixa do cliente e consultar novamente para comprovar a atualização.
@@ -173,3 +178,16 @@ Gemini depende de chave, acesso ao modelo e quota. Cotação depende da disponib
 
 A implementação foi dividida entre agentes de domínio/persistência e aplicação/interface em worktrees isoladas, com integração e revisão final pelo agente principal. O responsável pela entrega deve conseguir explicar os contratos, a fórmula, a recuperação dos CSVs e as escolhas de teste.
 
+
+### Verificação opcional das APIs reais
+
+```powershell
+uv run pytest -m live tests/test_live.py
+```
+
+Esse comando faz chamadas externas. O teste de Gemini lê a chave local e pode consumir quota; sem chave é marcado como ignorado. O teste de câmbio consulta a API pública, sem chave. Não é executado pelo CI padrão.
+
+
+### Pastas protegidas no Windows
+
+Se o Windows bloquear gravações em Documentos, mantenha o código nessa pasta e configure `DATA_DIR` no `.env` para um diretório gravável fora de Documentos. Não é necessário desativar proteções do sistema. Caches de testes também podem ser direcionados por `RUFF_CACHE_DIR` e `COVERAGE_FILE`; `pytest -p no:cacheprovider` desativa somente o cache de testes.

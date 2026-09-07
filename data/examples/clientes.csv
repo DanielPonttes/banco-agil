@@ -1,0 +1,3 @@
+cpf_cliente,nome,data_nascimento,limite_atual,score
+01234567890,Ana Souza,1990-01-15,1000.00,300
+98765432100,Bruno Lima,1985-07-22,3000.00,575
