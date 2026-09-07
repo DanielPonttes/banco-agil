@@ -73,7 +73,9 @@ def test_invalid_quote_is_not_presented(payload):
             AwesomeAPIProvider(http_client=http).get_quote("USD")
 
 
-@pytest.mark.parametrize("status,expected_calls", [(500, 2), (429, 2), (404, 1), (401, 1)])
+@pytest.mark.parametrize(
+    "status,expected_calls", [(500, 2), (429, 2), (408, 2), (504, 2), (404, 1), (401, 1)]
+)
 def test_retry_only_transient_errors(status, expected_calls):
     calls = []
 
@@ -129,7 +131,8 @@ def test_gemini_calls_real_sdk_interface_with_schema():
     )
     assert result.currency == "USD"
     assert received["contents"] == "hello"
-    assert received["config"].response_schema == Output
+    assert received["config"].response_json_schema == Output.model_json_schema()
+    assert received["config"].response_schema is None
     assert received["config"].response_mime_type == "application/json"
 
 
@@ -140,3 +143,70 @@ def test_gemini_invalid_parsed_mapping_has_safe_error():
 
     with pytest.raises(StructuredOutputError):
         GeminiProvider(client=SimpleNamespace(models=Models())).generate_structured("hello", Output)
+
+
+@pytest.mark.parametrize("extra,invalid", [({}, False), ({"cpf": "not-allowed"}, True)])
+def test_full_agent_schema_through_real_sdk_transport(extra, invalid):
+    import json
+
+    from google import genai
+    from google.genai import types
+
+    from banco_agil.application import AgentDecision
+
+    def handler(request):
+        body = json.loads(request.content)
+        config = body["generationConfig"]
+        assert "responseSchema" not in config
+        schema = config["responseJsonSchema"]
+        assert schema["additionalProperties"] is False
+        assert schema["$defs"]["InterviewSlots"]["additionalProperties"] is False
+        assert "additional_properties" not in json.dumps(schema)
+        answer = {"intent": "credito", "action": "consultar_limite", **extra}
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {
+                        "content": {"role": "model", "parts": [{"text": json.dumps(answer)}]},
+                        "finishReason": "STOP",
+                    }
+                ]
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        sdk = genai.Client(api_key="test-key", http_options=types.HttpOptions(httpx_client=http))
+        provider = GeminiProvider(client=sdk)
+        if invalid:
+            with pytest.raises(StructuredOutputError):
+                provider.generate_structured("Qual meu limite?", AgentDecision)
+        else:
+            result = provider.generate_structured("Qual meu limite?", AgentDecision)
+            assert result.action == "consultar_limite"
+
+
+@pytest.mark.parametrize(
+    "status,expected",
+    [
+        (400, "formato"),
+        (401, "chave"),
+        (403, "permissão"),
+        (404, "modelo"),
+        (429, "quota"),
+        (503, "sobrecarregado"),
+        (504, "demorou"),
+    ],
+)
+def test_gemini_error_messages_distinguish_cause_without_leaking_details(status, expected):
+    from google.genai import errors
+
+    class Models:
+        def generate_content(self, **kwargs):
+            error = errors.ClientError if status < 500 else errors.ServerError
+            raise error(status, {"error": {"message": "private-value", "code": status}})
+
+    with pytest.raises(ProviderError) as caught:
+        GeminiProvider(client=SimpleNamespace(models=Models())).generate_structured("hello", Output)
+    assert expected in str(caught.value)
+    assert "private-value" not in str(caught.value)

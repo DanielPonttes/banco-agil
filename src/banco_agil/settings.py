@@ -31,7 +31,7 @@ class Settings:
             data_dir=data_dir if data_dir.is_absolute() else ROOT / data_dir,
             examples_dir=ROOT / "data/examples",
             gemini_api_key=value("GEMINI_API_KEY", "").strip(),
-            gemini_model=value("GEMINI_MODEL", "gemini-3.8-flash").strip(),
+            gemini_model=value("GEMINI_MODEL", "gemini-3.5-flash-lite").strip(),
             awesomeapi_key=value("AWESOMEAPI_KEY", "").strip(),
             log_level=value("LOG_LEVEL", "INFO").upper(),
         )

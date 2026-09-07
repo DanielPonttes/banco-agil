@@ -1,6 +1,7 @@
 """Typed external integrations with bounded requests and safe errors."""
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -10,10 +11,11 @@ from xml.etree import ElementTree
 
 import httpx
 from google import genai
-from google.genai import types
+from google.genai import errors, types
 from pydantic import BaseModel, ValidationError
 
 T = TypeVar("T", bound=BaseModel)
+log = logging.getLogger(__name__)
 
 
 class ProviderError(RuntimeError):
@@ -29,7 +31,7 @@ class StructuredOutputError(ProviderError):
 
 
 class GeminiProvider:
-    def __init__(self, api_key=None, model="gemini-3.8-flash", client=None):
+    def __init__(self, api_key=None, model="gemini-3.5-flash-lite", client=None):
         self.api_key = api_key
         self.model = model
         self._client = client
@@ -56,14 +58,34 @@ class GeminiProvider:
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
-                    response_schema=response_model,
+                    response_json_schema=response_model.model_json_schema(),
+                    automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
                     temperature=0,
                 ),
             )
-        except Exception as exc:
+        except errors.APIError as exc:
+            messages = {
+                400: "O Gemini rejeitou o formato da solicitação. A integração precisa ser verificada.",
+                401: "O Gemini não autorizou a chave configurada. Verifique GEMINI_API_KEY.",
+                403: "A chave configurada não tem permissão para acessar o Gemini.",
+                404: "O modelo configurado não está disponível. Verifique GEMINI_MODEL.",
+                429: "O Gemini atingiu o limite de requisições ou quota. Tente novamente mais tarde.",
+                503: "O Gemini está temporariamente sobrecarregado. Tente novamente mais tarde.",
+                504: "O Gemini demorou demais para responder. Tente novamente.",
+            }
+            log.warning("gemini_request_failed http_status=%s", exc.code)
             raise ProviderError(
-                "Não foi possível consultar o Gemini. Verifique a chave, o modelo e a quota."
+                messages.get(exc.code, "O serviço Gemini não concluiu a solicitação.")
             ) from exc
+        except httpx.TimeoutException as exc:
+            raise ProviderError("O Gemini demorou demais para responder. Tente novamente.") from exc
+        except httpx.RequestError as exc:
+            raise ProviderError(
+                "Não foi possível conectar ao Gemini. Verifique a conexão."
+            ) from exc
+        except Exception as exc:
+            log.warning("gemini_request_failed category=%s", type(exc).__name__)
+            raise ProviderError("A integração com o Gemini não concluiu a solicitação.") from exc
         try:
             parsed = getattr(result, "parsed", None)
             if isinstance(parsed, response_model):

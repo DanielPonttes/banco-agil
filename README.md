@@ -25,7 +25,7 @@ Editar `.env` localmente:
 
 ```dotenv
 GEMINI_API_KEY=sua_chave_aqui
-GEMINI_MODEL=gemini-3.8-flash
+GEMINI_MODEL=gemini-3.5-flash-lite
 AWESOMEAPI_KEY=
 DATA_DIR=data/runtime
 LOG_LEVEL=INFO
@@ -173,11 +173,6 @@ CSV foi mantido como base conforme o desafio. Uma substituição atômica proteg
 Aplicação local de demonstração, com arquivos pequenos e um diretório de dados compartilhado. Não oferece hospedagem, transações distribuídas, autenticação bancária de produção ou continuidade da conversa após reinício do navegador/processo. CSVs persistem independentemente do histórico do chat.
 
 Gemini depende de chave, acesso ao modelo e quota. Cotação depende da disponibilidade e atualização da fonte; o horário retornado deve ser considerado, inclusive fora de horário de mercado.
-
-## Desenvolvimento assistido por IA
-
-A implementação foi dividida entre agentes de domínio/persistência e aplicação/interface em worktrees isoladas, com integração e revisão final pelo agente principal. O responsável pela entrega deve conseguir explicar os contratos, a fórmula, a recuperação dos CSVs e as escolhas de teste.
-
 
 ### Verificação opcional das APIs reais
 

@@ -102,6 +102,11 @@ def explicit_end(text):
 
 def yes_no(text):
     low = text.casefold().strip(" .!?")
+    confirmation_words = r"\b(?:confirmo|confirmar|correto|certo|aceito|enviar|pode)\b"
+    if re.match(r"^(?:não|nao|n)(?:\b|,)", low) and re.search(confirmation_words, low):
+        return False
+    if re.match(r"^(?:sim|s)(?:\b|,)", low) and re.search(confirmation_words, low):
+        return True
     if low in {
         "sim",
         "s",
@@ -301,6 +306,13 @@ class ConversationEngine:
         if not self.state.authenticated:
             data["answer"] = self._auth(msg)
             return data
+        if (
+            self.state.stage == "entrevista"
+            and (self.state.interview_offer or self.state.interview_confirm_pending)
+            and yes_no(msg) is not None
+        ):
+            data["route"] = "entrevista"
+            return data
         decision = self._ask("triagem", msg)
         if decision.intent == "encerrar":
             data["answer"] = self.end_session()
@@ -374,13 +386,22 @@ class ConversationEngine:
 
     def _interview_node(self, data):
         msg = data["message"]
-        decision = self._ask("entrevista", msg)
+        answer = yes_no(msg)
+        if answer is not None and (
+            self.state.interview_offer or self.state.interview_confirm_pending
+        ):
+            decision = AgentDecision(intent="entrevista", confirmed=answer)
+        else:
+            decision = self._ask("entrevista", msg)
         if decision.intent == "encerrar":
             data["answer"] = self.end_session()
             return data
-        answer = yes_no(msg)
         if answer is None:
             answer = decision.confirmed
+        if self.state.interview_confirm_pending and answer is True:
+            self._plans[self._mid] = ("score", Interview(**self.state.interview))
+            data["answer"] = self._execute_plan()
+            return data
         slots = decision.interview.model_dump(exclude_none=True)
         if self.state.interview_offer:
             if answer is False:

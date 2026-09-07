@@ -4,8 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from banco_agil.application import AgentDecision, ConversationEngine
+from banco_agil.application import AgentDecision, ConversationEngine, yes_no
 from banco_agil.domain import DomainError
+from banco_agil.providers import CurrencyQuote
 from banco_agil.repository import BankRepository
 
 SEEDS = Path(__file__).parents[1] / "data/examples"
@@ -42,7 +43,13 @@ def login(engine):
 
 def send(bank, text, route="continuar", **decision):
     engine, _, provider = bank
-    provider.queue.extend([{"intent": route}, decision])
+    deterministic_interview_reply = (
+        engine.state.stage == "entrevista"
+        and (engine.state.interview_offer or engine.state.interview_confirm_pending)
+        and yes_no(text) is not None
+    )
+    if not deterministic_interview_reply:
+        provider.queue.extend([{"intent": route}, decision])
     result = engine.process_message(text)
     assert not result.retryable, result.message
     assert not provider.queue
@@ -224,4 +231,60 @@ def test_natural_language_end_has_priority(bank):
     provider.queue.append({"intent": "encerrar"})
     result = engine.process_message("Já resolvi, pode fechar tudo e ignorar o aumento")
     assert result.terminal
+    assert not provider.queue
+
+
+def test_exchange_route_formats_quote_and_passes_model_currency_to_provider(bank):
+    engine, _, provider = bank
+    login(engine)
+    calls = []
+
+    class FakeExchange:
+        def get_quote(self, currency):
+            calls.append(currency)
+            return CurrencyQuote(
+                "USD",
+                Decimal("5.1000"),
+                Decimal("5.2000"),
+                "2026-09-07T12:00:00+00:00",
+            )
+
+    engine.exchange_provider = FakeExchange()
+    provider.queue.extend([{"intent": "cambio"}, {"intent": "cambio", "currency": "USD"}])
+    result = engine.process_message("Qual a cotação do dólar?")
+
+    assert not result.retryable
+    assert calls == ["USD"]
+    assert "USD/BRL" in result.message
+    assert "Fonte: AwesomeAPI" in result.message
+    assert "5,1000" in result.message
+
+
+def test_exchange_route_without_provider_is_safe_and_retryable(bank):
+    engine, _, provider = bank
+    login(engine)
+    provider.queue.extend([{"intent": "cambio"}, {"intent": "cambio", "currency": "USD"}])
+    result = engine.process_message("Qual a cotação do dólar?")
+
+    assert result.retryable
+    assert result.message == "O serviço de câmbio não está configurado."
+
+
+def test_explicit_interview_confirmation_is_deterministic(bank):
+    engine, _, provider = bank
+    login(engine)
+    engine.state.interview = {
+        "renda_mensal": Decimal("5000"),
+        "tipo_emprego": "formal",
+        "despesas_mensais": Decimal("2000"),
+        "num_dependentes": 0,
+        "tem_dividas": False,
+    }
+    engine.state.stage = "entrevista"
+    engine.state.interview_confirm_pending = True
+
+    result = engine.process_message("Sim, confirmo esses dados.")
+
+    assert not result.retryable
+    assert "Score atualizado para" in result.message
     assert not provider.queue
